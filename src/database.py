@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
@@ -37,8 +38,13 @@ def _get_database_url() -> str:
 DB_URL = _get_database_url()
 if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
+if DB_URL.startswith("postgresql://") and "sslmode=" not in DB_URL:
+    parts = urlsplit(DB_URL)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["sslmode"] = "require"
+    DB_URL = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
-engine = create_engine(DB_URL, echo=False)
+engine = create_engine(DB_URL, echo=False, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(bind=engine)
 
