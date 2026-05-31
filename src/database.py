@@ -1,7 +1,7 @@
 import os
 import sys
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
@@ -15,7 +15,26 @@ def _resolve_db_path() -> Path:
 
 DB_PATH = _resolve_db_path()
 
+def _read_secret(name: str) -> str | None:
+    if os.environ.get(name):
+        return os.environ[name]
+    try:
+        import streamlit as st
+        value = st.secrets.get(name)
+        return str(value) if value else None
+    except Exception:
+        return None
+
+
 def _get_database_url() -> str:
+    supabase_password = _read_secret("SUPABASE_DB_PASSWORD")
+    if supabase_password:
+        encoded_password = quote(supabase_password, safe="")
+        return (
+            "postgresql://postgres.wakhbvofmkwlrujggikg:"
+            f"{encoded_password}@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
+        )
+
     # 1. Controlla variabili d'ambiente (universale)
     url = os.environ.get("DATABASE_URL")
     if url:

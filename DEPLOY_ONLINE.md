@@ -19,7 +19,7 @@ lo storage locale non e' persistente e i termini del servizio non sono pensati p
 Imposta sempre questi valori nel provider cloud:
 
 ```toml
-DATABASE_URL = "postgresql://utente:password@host:5432/database"
+SUPABASE_DB_PASSWORD = "password-del-database-supabase"
 ACCESS_PASSWORD = "una-password-lunga-e-unica"
 ```
 
