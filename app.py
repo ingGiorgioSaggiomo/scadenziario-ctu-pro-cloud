@@ -701,7 +701,7 @@ def page_dashboard():
                 prossima.tipo_termine if prossima else "",
             )
         ).lower()
-        edit_url = f"./?page=Modifica%20incarico&incarico_id={inc.id}"
+        edit_url = f"https://scadenziario-ctu-pro.streamlit.app/?page=Modifica%20incarico&incarico_id={inc.id}"
 
         rows.append({
             "id": inc.id,
