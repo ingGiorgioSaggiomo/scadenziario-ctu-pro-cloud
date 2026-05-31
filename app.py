@@ -90,6 +90,78 @@ st.markdown(
     h1 {font-size: 1.7rem !important; margin-bottom: 0.5rem;}
     h2 {font-size: 1.3rem !important; margin-top: 1rem;}
     div[data-testid="stMetric"] {background:#f5f5f5; padding:0.5rem 0.8rem; border-radius:6px;}
+    .dashboard-table-wrap {width:100%; overflow-x:auto;}
+    .dashboard-table {width:100%; border-collapse:collapse; table-layout:fixed;}
+    .dashboard-table th {
+        padding:8px;
+        background:#eceff1;
+        text-align:left;
+        overflow-wrap:anywhere;
+    }
+    .dashboard-table td {
+        padding:8px;
+        border-bottom:1px solid #e0e0e0;
+        vertical-align:top;
+        overflow-wrap:anywhere;
+    }
+    .dashboard-table .cell-muted {color:#555;}
+    .dashboard-table .cell-number {text-align:right;}
+    @media (max-width: 760px) {
+        .block-container {
+            padding-left:0.75rem;
+            padding-right:0.75rem;
+            padding-top:0.75rem;
+        }
+        h1 {font-size:1.35rem !important;}
+        h2 {font-size:1.15rem !important;}
+        h3 {font-size:1rem !important;}
+        div[data-testid="stMetric"] {
+            padding:0.45rem 0.55rem;
+            min-height:68px;
+        }
+        div[data-testid="stMetricLabel"] p {font-size:0.72rem;}
+        div[data-testid="stMetricValue"] {font-size:1.25rem;}
+        .dashboard-table-wrap {overflow-x:visible;}
+        .dashboard-table,
+        .dashboard-table tbody,
+        .dashboard-table tr,
+        .dashboard-table td {
+            display:block;
+            width:100%;
+        }
+        .dashboard-table {
+            table-layout:auto;
+            border-collapse:separate;
+            border-spacing:0 0.75rem;
+        }
+        .dashboard-table colgroup,
+        .dashboard-table thead {display:none;}
+        .dashboard-table tr {
+            border:1px solid #d8dde3;
+            border-radius:8px;
+            background:#fff;
+            box-shadow:0 1px 2px rgba(0,0,0,0.04);
+            overflow:hidden;
+        }
+        .dashboard-table td {
+            display:grid;
+            grid-template-columns:7.5rem minmax(0, 1fr);
+            gap:0.6rem;
+            align-items:start;
+            border-bottom:1px solid #eef1f4;
+            padding:0.6rem 0.7rem;
+            font-size:0.92rem;
+        }
+        .dashboard-table td:last-child {border-bottom:0;}
+        .dashboard-table td::before {
+            content:attr(data-label);
+            color:#68717d;
+            font-weight:600;
+            font-size:0.78rem;
+        }
+        .dashboard-table .cell-number {text-align:left;}
+        .dashboard-table a {font-size:1rem; line-height:1.35;}
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -685,16 +757,18 @@ def page_dashboard():
     for r in rows:
         counters[r["alert_raw"]] = counters.get(r["alert_raw"], 0) + 1
 
-    cols = st.columns(len(metric_keys))
-    for i, key in enumerate(metric_keys):
-        cols[i].metric(ALERT_LABEL[key], counters.get(key, 0))
+    metric_rows = [metric_keys[:5], metric_keys[5:]]
+    for metric_row in metric_rows:
+        cols = st.columns(len(metric_row))
+        for i, key in enumerate(metric_row):
+            cols[i].metric(ALERT_LABEL[key], counters.get(key, 0))
 
     st.caption(f"Incarichi visualizzati: {len(rows)} su {len(incarichi)}")
     st.markdown("---")
 
     st.markdown("---")
 
-    html = ['<table style="width:100%; border-collapse:collapse; table-layout:fixed">']
+    html = ['<div class="dashboard-table-wrap"><table class="dashboard-table">']
     html.append(
         "<colgroup>"
         "<col style='width:18%'>"
@@ -707,35 +781,35 @@ def page_dashboard():
         "<col style='width:10%'>"
         "<col style='width:21%'>"
         "</colgroup>"
-        "<thead><tr style='background:#eceff1;text-align:left'>"
-        "<th style='padding:8px'>Incarico</th>"
-        "<th style='padding:8px'>Ufficio</th>"
-        "<th style='padding:8px'>Stato</th>"
-        "<th style='padding:8px'>Prio.</th>"
-        "<th style='padding:8px'>Prossima attivita</th>"
-        "<th style='padding:8px'>Tipo</th>"
-        "<th style='padding:8px'>gg</th>"
-        "<th style='padding:8px'>Alert</th>"
-        "<th style='padding:8px'>Note</th>"
+        "<thead><tr>"
+        "<th>Incarico</th>"
+        "<th>Ufficio</th>"
+        "<th>Stato</th>"
+        "<th>Prio.</th>"
+        "<th>Prossima attivita</th>"
+        "<th>Tipo</th>"
+        "<th>gg</th>"
+        "<th>Alert</th>"
+        "<th>Note</th>"
         "</tr></thead><tbody>"
     )
     for r in rows:
         gg = r["Giorni residui"]
         gg_disp = "â€”" if gg is None else str(gg)
         html.append(
-            f"<tr style='border-bottom:1px solid #e0e0e0'>"
-            f"<td style='padding:8px'>{r['Incarico']}</td>"
-            f"<td style='padding:8px'>{r['Ufficio']}</td>"
-            f"<td style='padding:8px'>{r['Stato']}</td>"
-            f"<td style='padding:8px'>{r['Priorita']}</td>"
-            f"<td style='padding:8px'>{r['Prossima scadenza']}</td>"
-            f"<td style='padding:8px'>{r['Tipo termine']}</td>"
-            f"<td style='padding:8px;text-align:right'>{gg_disp}</td>"
-            f"<td style='padding:8px'>{alert_badge_html(r['alert_raw'])}</td>"
-            f"<td style='padding:8px;color:#555'>{r['Note']}</td>"
+            f"<tr>"
+            f"<td data-label='Incarico'>{r['Incarico']}</td>"
+            f"<td data-label='Ufficio'>{r['Ufficio']}</td>"
+            f"<td data-label='Stato'>{r['Stato']}</td>"
+            f"<td data-label='Priorita'>{r['Priorita']}</td>"
+            f"<td data-label='Prossima'>{r['Prossima scadenza']}</td>"
+            f"<td data-label='Tipo'>{r['Tipo termine']}</td>"
+            f"<td data-label='Giorni' class='cell-number'>{gg_disp}</td>"
+            f"<td data-label='Alert'>{alert_badge_html(r['alert_raw'])}</td>"
+            f"<td data-label='Note' class='cell-muted'>{r['Note']}</td>"
             f"</tr>"
         )
-    html.append("</tbody></table>")
+    html.append("</tbody></table></div>")
     st.markdown("".join(html), unsafe_allow_html=True)
     session.close()
 
