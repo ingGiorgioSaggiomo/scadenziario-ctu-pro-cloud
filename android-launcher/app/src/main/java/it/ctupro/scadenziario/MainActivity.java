@@ -17,6 +17,7 @@ import android.widget.ProgressBar;
 
 public class MainActivity extends Activity {
     private static final String APP_URL = "https://scadenziario-ctu-pro.streamlit.app/";
+    private static final String APP_HOST = "scadenziario-ctu-pro.streamlit.app";
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -67,11 +68,13 @@ public class MainActivity extends Activity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri uri = request.getUrl();
-                if ("scadenziario-ctu-pro.streamlit.app".equalsIgnoreCase(uri.getHost())) {
-                    return false;
-                }
-                view.loadUrl(uri.toString());
+                openInside(view, request.getUrl());
+                return true;
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                openInside(view, Uri.parse(url));
                 return true;
             }
         });
@@ -81,6 +84,19 @@ public class MainActivity extends Activity {
         } else {
             webView.restoreState(savedInstanceState);
         }
+    }
+
+    private void openInside(WebView view, Uri uri) {
+        if (uri == null) {
+            view.loadUrl(APP_URL);
+            return;
+        }
+        String host = uri.getHost();
+        if (host == null || APP_HOST.equalsIgnoreCase(host)) {
+            view.loadUrl(uri.toString());
+            return;
+        }
+        view.loadUrl(uri.toString());
     }
 
     @Override

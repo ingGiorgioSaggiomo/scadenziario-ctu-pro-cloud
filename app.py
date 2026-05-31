@@ -106,6 +106,7 @@ st.markdown(
     }
     .dashboard-table .cell-muted {color:#555;}
     .dashboard-table .cell-number {text-align:right;}
+    .mobile-open-link {display:none;}
     @media (max-width: 760px) {
         .block-container {
             padding-left:0.75rem;
@@ -161,6 +162,17 @@ st.markdown(
         }
         .dashboard-table .cell-number {text-align:left;}
         .dashboard-table a {font-size:1rem; line-height:1.35;}
+        .mobile-open-link {
+            display:inline-block;
+            margin-top:0.55rem;
+            padding:0.42rem 0.7rem;
+            border-radius:6px;
+            background:#1565c0;
+            color:#fff !important;
+            text-decoration:none !important;
+            font-weight:700;
+            font-size:0.88rem !important;
+        }
     }
     </style>
     """,
@@ -689,13 +701,15 @@ def page_dashboard():
                 prossima.tipo_termine if prossima else "",
             )
         ).lower()
+        edit_url = f"./?page=Modifica%20incarico&incarico_id={inc.id}"
 
         rows.append({
             "id": inc.id,
             "Incarico": (
-                f"<a href='?page=Modifica%20incarico&incarico_id={inc.id}' "
+                f"<a href='{edit_url}' target='_self' "
                 f"style='color:#1565c0;text-decoration:none;font-weight:600'>"
                 f"{escape(incarico_label)}</a>"
+                f"<br><a class='mobile-open-link' href='{edit_url}' target='_self'>Apri incarico</a>"
             ),
             "Ufficio": escape(inc.tribunale or ""),
             "Stato": escape(inc.stato or ""),
