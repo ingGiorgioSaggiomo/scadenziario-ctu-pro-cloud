@@ -13,6 +13,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import sessionmaker
@@ -28,9 +29,16 @@ MODELS = [Incarico, Termine, Evento, Sospensione, Documento]
 
 
 def _database_url() -> str:
+    supabase_password = os.environ.get("SUPABASE_DB_PASSWORD")
+    if supabase_password:
+        return (
+            "postgresql://postgres.wakhbvofmkwlrujggikg:"
+            f"{quote(supabase_password, safe='')}@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
+        )
+
     url = os.environ.get("DATABASE_URL")
     if not url:
-        raise SystemExit("Imposta DATABASE_URL verso PostgreSQL prima di migrare.")
+        raise SystemExit("Imposta SUPABASE_DB_PASSWORD oppure DATABASE_URL prima di migrare.")
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     if not url.startswith("postgresql://"):
