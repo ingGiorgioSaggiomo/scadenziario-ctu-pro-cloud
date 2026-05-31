@@ -1,0 +1,8 @@
+streamlit>=1.30
+sqlalchemy>=2.0
+pandas>=2.1
+openpyxl>=3.1
+icalendar>=5.0
+pytest>=7.4
+psycopg2-binary>=2.9
+

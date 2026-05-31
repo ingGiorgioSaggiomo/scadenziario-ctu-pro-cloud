@@ -1,0 +1,48 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Pytest / Unit testing
+.pytest_cache/
+.tmp_pytest/
+tmp_pytest/
+.tmp/
+
+# SQLite Database (il database locale di sviluppo con dati reali/demo)
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
+
+# Backup locali e copie di sicurezza con possibili dati sensibili
+backup/
+backup_*/
+backup-pre*/
+backup_pre*/
+database_backups/
+
+# Segreti locali/cloud
+.env
+.env.*
+.streamlit/secrets.toml
+
+# Build and Distribution (esclude l'eseguibile compilato e i file temporanei di PyInstaller)
+dist/
+build/
+*.spec
+
+# IDE / Editor
+.vscode/
+.idea/
+.project
+.pydevproject
+
+# Log files
+*.log
