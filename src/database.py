@@ -49,7 +49,7 @@ def _get_database_url() -> str:
     supabase_password = _read_secret("SUPABASE_DB_PASSWORD")
     if supabase_password:
         encoded_password = quote(supabase_password, safe="")
-        pooler_host = _read_secret("SUPABASE_POOLER_HOST") or "aws-1-eu-west-1.pooler.supabase.com"
+        pooler_host = _read_secret("SUPABASE_POOLER_HOST") or "aws-0-eu-west-1.pooler.supabase.com"
         pooler_port = _read_secret("SUPABASE_POOLER_PORT") or "5432"
         return (
             "postgresql://postgres.wakhbvofmkwlrujggikg:"
