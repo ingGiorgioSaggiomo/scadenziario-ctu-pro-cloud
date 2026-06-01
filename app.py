@@ -6,6 +6,7 @@ from html import escape
 
 import pandas as pd
 import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.database import elimina_dati_demo, elimina_incarico, get_session, init_db
 from src.backup_tools import crea_backup_database
@@ -75,9 +76,19 @@ def check_password() -> bool:
     return False
 
 
-init_db()
-
 st.set_page_config(page_title="Scadenziario CTU Pro", layout="wide", page_icon=None)
+
+try:
+    init_db()
+except SQLAlchemyError:
+    st.error("Database online non raggiungibile.")
+    st.info(
+        "Lo scadenziario non riesce a collegarsi a Supabase. "
+        "Se Supabase e' in manutenzione, attendi qualche minuto e ricarica. "
+        "Altrimenti verifica i Secrets di Streamlit Cloud: DATABASE_URL oppure "
+        "SUPABASE_DB_PASSWORD / SUPABASE_POOLER_HOST."
+    )
+    st.stop()
 
 # Controllo della password per accessi online
 if not check_password():

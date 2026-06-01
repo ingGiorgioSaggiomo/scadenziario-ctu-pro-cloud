@@ -27,15 +27,9 @@ def _read_secret(name: str) -> str | None:
 
 
 def _get_database_url() -> str:
-    supabase_password = _read_secret("SUPABASE_DB_PASSWORD")
-    if supabase_password:
-        encoded_password = quote(supabase_password, safe="")
-        return (
-            "postgresql://postgres.wakhbvofmkwlrujggikg:"
-            f"{encoded_password}@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
-        )
-
-    # 1. Controlla variabili d'ambiente (universale)
+    # 1. Controlla variabili d'ambiente (universale). Deve avere precedenza
+    # sul fallback con password, cosi' si puo' aggiornare il pooler da Streamlit
+    # Cloud senza modificare codice.
     url = os.environ.get("DATABASE_URL")
     if url:
         return url
@@ -50,7 +44,19 @@ def _get_database_url() -> str:
     except Exception:
         pass
 
-    # 3. Fallback locale
+    # 3. Compatibilita' con la configurazione semplificata usata inizialmente.
+    # Il pooler host/porta restano configurabili per eventuali upgrade Supabase.
+    supabase_password = _read_secret("SUPABASE_DB_PASSWORD")
+    if supabase_password:
+        encoded_password = quote(supabase_password, safe="")
+        pooler_host = _read_secret("SUPABASE_POOLER_HOST") or "aws-1-eu-west-1.pooler.supabase.com"
+        pooler_port = _read_secret("SUPABASE_POOLER_PORT") or "5432"
+        return (
+            "postgresql://postgres.wakhbvofmkwlrujggikg:"
+            f"{encoded_password}@{pooler_host}:{pooler_port}/postgres"
+        )
+
+    # 4. Fallback locale
     return f"sqlite:///{DB_PATH}"
 
 
