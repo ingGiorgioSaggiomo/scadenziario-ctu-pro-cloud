@@ -80,7 +80,9 @@ st.set_page_config(page_title="Scadenziario CTU Pro", layout="wide", page_icon=N
 
 try:
     init_db()
-except SQLAlchemyError:
+except SQLAlchemyError as exc:
+    db_error = getattr(exc, "orig", exc)
+    print(f"Database connection failed: {type(db_error).__name__}: {db_error}")
     st.error("Database online non raggiungibile.")
     st.info(
         "Lo scadenziario non riesce a collegarsi a Supabase. "
