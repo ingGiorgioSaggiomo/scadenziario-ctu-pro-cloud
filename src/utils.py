@@ -55,6 +55,7 @@ DECORRENZE = [
 ]
 TIPI_EVENTO = ["udienza", "sopralluogo", "riunione", "deposito", "bozza", "osservazioni", "nota", "altro"]
 STATI_EVENTO = ["previsto", "completato", "annullato"]
+TIPI_EVENTO_NON_OPERATIVI_DASHBOARD = {"nota"}
 
 
 def alert_badge_html(alert: str) -> str:
@@ -129,6 +130,8 @@ def trova_prossima_attivita_dashboard(incarico, data_oggi: Optional[date] = None
 
     eventi = list(genera_eventi_standard(incarico, incarico.termini))
     for evento in incarico.eventi:
+        if getattr(evento, "tipo", None) in TIPI_EVENTO_NON_OPERATIVI_DASHBOARD:
+            continue
         if evento.data is None:
             continue
         if getattr(evento, "completato", False):

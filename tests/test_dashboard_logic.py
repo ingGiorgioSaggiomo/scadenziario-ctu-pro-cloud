@@ -130,6 +130,25 @@ def test_dashboard_evento_annullato_ignorato():
     assert classifica_per_dashboard(inc.stato, prossima) == "dati_mancanti"
 
 
+def test_dashboard_evento_nota_non_supera_termine_operativo():
+    oggi = date(2026, 6, 24)
+    inc = FakeIncaricoDashboard(
+        termini=[
+            FakeTermine(
+                tipo_termine="bozza",
+                giorni=0,
+                decorrenza="data_manual",
+                data_manual=date(2026, 7, 31),
+            )
+        ],
+        eventi=[FakeEvento(tipo="nota", data=date(2026, 6, 12))],
+    )
+    prossima = trova_prossima_attivita_dashboard(inc, oggi)
+    assert prossima is not None
+    assert prossima.tipo_termine == "bozza"
+    assert prossima.data_scadenza == date(2026, 7, 31)
+
+
 def test_dashboard_senza_termini_e_senza_eventi_validi():
     oggi = date(2026, 5, 2)
     inc = FakeIncaricoDashboard()
