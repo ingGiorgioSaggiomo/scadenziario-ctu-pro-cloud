@@ -128,7 +128,11 @@ def trova_prossima_attivita_dashboard(incarico, data_oggi: Optional[date] = None
     if data_oggi is None:
         data_oggi = date.today()
 
-    eventi = list(genera_eventi_standard(incarico, incarico.termini))
+    eventi = [
+        evento
+        for evento in genera_eventi_standard(incarico, incarico.termini)
+        if getattr(evento, "tipo_termine", None) not in TIPI_EVENTO_NON_OPERATIVI_DASHBOARD
+    ]
     for evento in incarico.eventi:
         if getattr(evento, "tipo", None) in TIPI_EVENTO_NON_OPERATIVI_DASHBOARD:
             continue
