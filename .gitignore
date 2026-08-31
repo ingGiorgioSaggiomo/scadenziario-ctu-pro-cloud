@@ -23,6 +23,7 @@ data/*.db-wal
 
 # Backup locali e copie di sicurezza con possibili dati sensibili
 backup/
+backups/
 backup_*/
 backup-pre*/
 backup_pre*/

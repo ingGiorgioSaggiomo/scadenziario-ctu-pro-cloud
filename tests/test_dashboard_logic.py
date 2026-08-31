@@ -11,10 +11,14 @@ from sqlalchemy.orm import sessionmaker
 from src.database import elimina_dati_demo, elimina_incarico, init_db
 from src.models import Incarico
 from src.utils import (
+    attesa_osservazioni_da_mostrare_dashboard,
     calcola_scadenza_termine,
     classifica_per_dashboard,
     is_numero_da_correggere,
+    metric_key_dashboard,
+    normalizza_stato_incarico,
     stato_evento,
+    tipi_evento_gestiti_da_termini,
     applica_stato_evento,
     trova_prossima_attivita_dashboard,
 )
@@ -47,6 +51,17 @@ def test_dashboard_chiuso_e_sospeso_prevalgono():
 def test_dashboard_attesa_osservazioni_prevale():
     assert classifica_per_dashboard("attesa osservazioni", FakeProssima(giorni_residui=-5)) == "attesa_osservazioni"
     assert classifica_per_dashboard("attesa osservazioni", None) == "attesa_osservazioni"
+
+
+def test_dashboard_stato_normalizzato():
+    assert normalizza_stato_incarico(" Attesa Osservazioni ") == "attesa osservazioni"
+    assert classifica_per_dashboard(" Attesa Osservazioni ", None) == "attesa_osservazioni"
+
+
+def test_dashboard_metric_key_attesa_osservazioni_prevale_su_alert_operativo():
+    assert metric_key_dashboard("attesa osservazioni", "pianificare") == "attesa_osservazioni"
+    assert metric_key_dashboard("attesa osservazioni", "urgente") == "attesa_osservazioni"
+    assert metric_key_dashboard("attivo", "urgente") == "urgente"
 
 
 @dataclass
@@ -173,6 +188,73 @@ def test_dashboard_termine_nota_non_supera_termine_operativo():
     assert prossima.data_scadenza == date(2026, 7, 31)
 
 
+def test_dashboard_termine_attivo_prevale_su_evento_omonimo_importato():
+    oggi = date(2026, 8, 2)
+    inc = FakeIncaricoDashboard(
+        termini=[
+            FakeTermine(
+                tipo_termine="deposito",
+                giorni=0,
+                decorrenza="data_manual",
+                data_manual=date(2026, 9, 14),
+            )
+        ],
+        eventi=[
+            FakeEvento(tipo="deposito", data=date(2026, 8, 31)),
+            FakeEvento(tipo="udienza", data=date(2026, 10, 27)),
+        ],
+    )
+
+    assert tipi_evento_gestiti_da_termini(inc) == {"deposito"}
+    prossima = trova_prossima_attivita_dashboard(inc, oggi)
+    assert prossima is not None
+    assert prossima.tipo_termine == "deposito"
+    assert prossima.data_scadenza == date(2026, 9, 14)
+
+
+def test_dashboard_evento_omonimo_ignorato_anche_se_termine_completato():
+    oggi = date(2026, 8, 2)
+    inc = FakeIncaricoDashboard(
+        termini=[
+            FakeTermine(
+                tipo_termine="osservazioni",
+                giorni=0,
+                decorrenza="data_manual",
+                data_manual=date(2026, 7, 25),
+                completato=True,
+            )
+        ],
+        eventi=[
+            FakeEvento(tipo="osservazioni", data=date(2026, 8, 11)),
+            FakeEvento(tipo="udienza", data=date(2026, 10, 27)),
+        ],
+    )
+
+    prossima = trova_prossima_attivita_dashboard(inc, oggi)
+    assert prossima is not None
+    assert prossima.tipo_termine == "udienza"
+    assert prossima.data_scadenza == date(2026, 10, 27)
+
+
+def test_dashboard_evento_resta_valido_se_termine_omonimo_non_calcolabile():
+    oggi = date(2026, 8, 2)
+    inc = FakeIncaricoDashboard(
+        termini=[
+            FakeTermine(
+                tipo_termine="deposito",
+                giorni=20,
+                decorrenza="data_ricezione_osservazioni",
+            )
+        ],
+        eventi=[FakeEvento(tipo="deposito", data=date(2026, 8, 31))],
+    )
+
+    assert tipi_evento_gestiti_da_termini(inc) == set()
+    prossima = trova_prossima_attivita_dashboard(inc, oggi)
+    assert prossima is not None
+    assert prossima.data_scadenza == date(2026, 8, 31)
+
+
 def test_dashboard_senza_termini_e_senza_eventi_validi():
     oggi = date(2026, 5, 2)
     inc = FakeIncaricoDashboard()
@@ -194,7 +276,7 @@ def test_dashboard_attesa_osservazioni_slitta_a_deposito_evento():
     assert prossima is not None
     assert prossima.tipo_termine == "deposito"
     assert prossima.data_scadenza == oggi + timedelta(days=30)
-    assert classifica_per_dashboard(inc.stato, prossima) == "pianificare"
+    assert classifica_per_dashboard(inc.stato, prossima) == "attesa_osservazioni"
 
 
 def test_dashboard_attesa_osservazioni_slitta_a_deposito_termine():
@@ -210,13 +292,68 @@ def test_dashboard_attesa_osservazioni_slitta_a_deposito_termine():
     assert prossima is not None
     assert prossima.tipo_termine == "deposito"
     assert prossima.data_scadenza == oggi + timedelta(days=9)
-    assert classifica_per_dashboard(inc.stato, prossima) == "urgente"
+    assert classifica_per_dashboard(inc.stato, prossima) == "attesa_osservazioni"
+
+
+def test_dashboard_attesa_osservazioni_nascosta_prima_scadenza_osservazioni():
+    oggi = date(2026, 6, 12)
+    inc = FakeIncaricoDashboard(
+        stato="attesa osservazioni",
+        termini=[FakeTermine(tipo_termine="osservazioni", giorni=25, decorrenza="data_manual", data_manual=oggi)],
+    )
+    assert attesa_osservazioni_da_mostrare_dashboard(inc, oggi) is False
+
+
+def test_dashboard_attesa_osservazioni_visibile_dopo_scadenza_osservazioni():
+    oggi = date(2026, 7, 8)
+    inc = FakeIncaricoDashboard(
+        stato="attesa osservazioni",
+        termini=[
+            FakeTermine(tipo_termine="osservazioni", giorni=25, decorrenza="data_manual", data_manual=date(2026, 6, 12)),
+            FakeTermine(tipo_termine="deposito", giorni=25, decorrenza="data_manual", data_manual=date(2026, 7, 7)),
+        ],
+    )
+    assert attesa_osservazioni_da_mostrare_dashboard(inc, oggi) is True
+
+
+def test_dashboard_attesa_osservazioni_visibile_dopo_evento_osservazioni_importato():
+    oggi = date(2026, 7, 8)
+    inc = FakeIncaricoDashboard(
+        stato="attesa osservazioni",
+        eventi=[FakeEvento(tipo="osservazioni", data=date(2026, 7, 7))],
+    )
+    assert attesa_osservazioni_da_mostrare_dashboard(inc, oggi) is True
+
+
+def test_dashboard_attesa_osservazioni_usa_termine_anziche_evento_omonimo():
+    oggi = date(2026, 8, 2)
+    inc = FakeIncaricoDashboard(
+        stato="attesa osservazioni",
+        termini=[
+            FakeTermine(
+                tipo_termine="osservazioni",
+                giorni=0,
+                decorrenza="data_manual",
+                data_manual=date(2026, 7, 25),
+                completato=True,
+            )
+        ],
+        eventi=[FakeEvento(tipo="osservazioni", data=date(2026, 8, 11))],
+    )
+
+    assert attesa_osservazioni_da_mostrare_dashboard(inc, oggi) is True
 
 
 def test_calcola_scadenza_termine_con_date_python():
     inc = FakeIncaricoDashboard(data_inizio_operazioni=date(2026, 5, 1))
     term = FakeTermine(giorni=5, decorrenza="data_inizio_operazioni")
     assert calcola_scadenza_termine(inc, term) == date(2026, 5, 6)
+
+
+def test_calcola_scadenza_termine_manual_ignora_giorni():
+    inc = FakeIncaricoDashboard(data_inizio_operazioni=date(2026, 5, 1))
+    term = FakeTermine(giorni=20, decorrenza="data_manual", data_manual=date(2026, 7, 25))
+    assert calcola_scadenza_termine(inc, term) == date(2026, 7, 25)
 
 
 # ----- is_numero_da_correggere -----
@@ -302,7 +439,7 @@ def test_elimina_dati_demo_cascade_su_figli(isolated_db):
     """L'eliminazione di un incarico demo deve rimuovere anche termini, eventi,
     sospensioni e documenti collegati."""
     from src.database import get_session
-    from src.models import Documento, Evento, Sospensione, Termine
+    from src.models import Documento, Evento, Pagamento, Sospensione, Termine
 
     s = get_session()
     demo = Incarico(
@@ -316,6 +453,7 @@ def test_elimina_dati_demo_cascade_su_figli(isolated_db):
     demo.eventi = [Evento(tipo="udienza", data=date.today() + timedelta(days=10))]
     demo.sospensioni = [Sospensione(data_inizio=date.today())]
     demo.documenti = [Documento(nome="all1.pdf", tipo="allegato")]
+    demo.pagamenti = [Pagamento(tipo="acconto", importo_dovuto=1000, importo_ricevuto=500)]
 
     real = Incarico(
         tipo="CTU", numero_rg="REAL/KEEP", tribunale="T",
@@ -340,6 +478,7 @@ def test_elimina_dati_demo_cascade_su_figli(isolated_db):
     assert s.query(Evento).count() == 1
     assert s.query(Sospensione).count() == 0
     assert s.query(Documento).count() == 0
+    assert s.query(Pagamento).count() == 0
     rimasto = s.query(Incarico).one()
     assert rimasto.numero_rg == "REAL/KEEP"
     s.close()
@@ -364,7 +503,7 @@ def test_elimina_dati_demo_committa(isolated_db):
 
 def test_elimina_incarico_cascade_su_figli(isolated_db):
     from src.database import get_session
-    from src.models import Documento, Evento, Sospensione, Termine
+    from src.models import Documento, Evento, Pagamento, Sospensione, Termine
 
     s = get_session()
     inc = Incarico(
@@ -378,6 +517,7 @@ def test_elimina_incarico_cascade_su_figli(isolated_db):
     inc.eventi = [Evento(tipo="udienza", data=date.today() + timedelta(days=3))]
     inc.sospensioni = [Sospensione(data_inizio=date.today())]
     inc.documenti = [Documento(nome="doc.pdf", tipo="allegato")]
+    inc.pagamenti = [Pagamento(tipo="acconto", importo_dovuto=1000, importo_ricevuto=1000)]
     s.add(inc)
     s.commit()
     inc_id = inc.id
@@ -390,6 +530,7 @@ def test_elimina_incarico_cascade_su_figli(isolated_db):
     assert s.query(Evento).count() == 0
     assert s.query(Sospensione).count() == 0
     assert s.query(Documento).count() == 0
+    assert s.query(Pagamento).count() == 0
     s.close()
 
 

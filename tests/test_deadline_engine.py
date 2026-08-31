@@ -23,6 +23,14 @@ class FakeTermine:
     attivo: bool = True
     completato: bool = False
     data_scadenza: Optional[date] = None
+    id: Optional[int] = None
+
+
+@dataclass
+class FakeSospensione:
+    data_inizio: date
+    data_fine: Optional[date]
+    incide_su_scadenze: bool = True
 
 
 @dataclass
@@ -34,10 +42,13 @@ class FakeIncarico:
     data_ricezione_osservazioni: Optional[date] = None
     stato: str = "attivo"
     termini: list = None
+    sospensioni: list = None
 
     def __post_init__(self):
         if self.termini is None:
             self.termini = []
+        if self.sospensioni is None:
+            self.sospensioni = []
 
 
 # --- calcola_data_scadenza ---
@@ -266,4 +277,83 @@ def test_decorrenza_data_manual():
 
     eventi = genera_eventi_standard(incarico, [termine])
     assert len(eventi) == 1
-    assert eventi[0].data_scadenza == date(2025, 4, 16)
+    assert eventi[0].data_scadenza == date(2025, 4, 1)
+
+
+def test_sospensione_incidente_sposta_la_scadenza():
+    termine = FakeTermine("bozza", 30, "data_inizio_operazioni")
+    incarico = FakeIncarico(
+        data_conferimento=date(2025, 7, 1),
+        data_inizio_operazioni=date(2025, 7, 1),
+        termini=[termine],
+        sospensioni=[FakeSospensione(date(2025, 7, 10), date(2025, 7, 19))],
+    )
+
+    evento = genera_eventi_standard(incarico, [termine], data_oggi=date(2025, 7, 1))[0]
+
+    assert evento.data_scadenza == date(2025, 8, 10)
+
+
+def test_sospensione_annotativa_non_sposta_la_scadenza():
+    termine = FakeTermine("bozza", 30, "data_inizio_operazioni")
+    incarico = FakeIncarico(
+        data_conferimento=date(2025, 7, 1),
+        data_inizio_operazioni=date(2025, 7, 1),
+        termini=[termine],
+        sospensioni=[FakeSospensione(date(2025, 7, 10), date(2025, 7, 19), False)],
+    )
+
+    evento = genera_eventi_standard(incarico, [termine], data_oggi=date(2025, 7, 1))[0]
+
+    assert evento.data_scadenza == date(2025, 7, 31)
+
+
+def test_sospensione_aperta_non_sposta_una_scadenza_non_definitiva():
+    termine = FakeTermine("bozza", 30, "data_inizio_operazioni")
+    incarico = FakeIncarico(
+        data_conferimento=date(2025, 7, 1),
+        data_inizio_operazioni=date(2025, 7, 1),
+        termini=[termine],
+        sospensioni=[FakeSospensione(date(2025, 7, 10), None)],
+    )
+
+    evento = genera_eventi_standard(incarico, [termine], data_oggi=date(2025, 7, 1))[0]
+
+    assert evento.data_scadenza == date(2025, 7, 31)
+
+
+def test_data_manual_non_viene_spostata_da_sospensioni():
+    termine = FakeTermine(
+        "deposito",
+        0,
+        "data_manual",
+        data_manual=date(2025, 7, 31),
+    )
+    incarico = FakeIncarico(
+        data_conferimento=date(2025, 7, 1),
+        termini=[termine],
+        sospensioni=[FakeSospensione(date(2025, 7, 10), date(2025, 7, 19))],
+    )
+
+    evento = genera_eventi_standard(incarico, [termine], data_oggi=date(2025, 7, 1))[0]
+
+    assert evento.data_scadenza == date(2025, 7, 31)
+
+
+def test_genera_eventi_usa_data_oggi_e_conserva_id_termine():
+    termine = FakeTermine(
+        "bozza",
+        10,
+        "data_inizio_operazioni",
+        id=42,
+    )
+    incarico = FakeIncarico(
+        data_conferimento=date(2025, 1, 1),
+        data_inizio_operazioni=date(2025, 1, 1),
+        termini=[termine],
+    )
+
+    evento = genera_eventi_standard(incarico, [termine], data_oggi=date(2025, 1, 5))[0]
+
+    assert evento.giorni_residui == 6
+    assert evento.termine_id == 42

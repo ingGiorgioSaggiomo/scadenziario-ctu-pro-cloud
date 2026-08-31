@@ -8,7 +8,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
-from src.models import Documento, Evento, Incarico, Sospensione, Termine
+from src.models import Documento, Evento, Incarico, ModificaChat, Pagamento, Sospensione, StoricoTermine, Termine
+from src.pagamenti import calcola_totale_fattura, importo_dovuto_pagamento
 from src.utils import calcola_scadenza_termine, stato_evento
 
 
@@ -50,6 +51,9 @@ def genera_excel_export(session) -> bytes:
     eventi = session.query(Evento).order_by(Evento.incarico_id, Evento.id).all()
     sospensioni = session.query(Sospensione).order_by(Sospensione.incarico_id, Sospensione.id).all()
     documenti = session.query(Documento).order_by(Documento.incarico_id, Documento.id).all()
+    pagamenti = session.query(Pagamento).order_by(Pagamento.incarico_id, Pagamento.id).all()
+    modifiche_chat = session.query(ModificaChat).order_by(ModificaChat.id).all()
+    storico_termini = session.query(StoricoTermine).order_by(StoricoTermine.id).all()
 
     incarichi_by_id = {inc.id: inc for inc in incarichi}
 
@@ -102,13 +106,13 @@ def genera_excel_export(session) -> bytes:
         "Eventi",
         [
             "ID", "Incarico ID", "Incarico", "Tipo", "Data", "Ora",
-            "Luogo", "Descrizione", "Stato",
+            "Luogo", "Descrizione", "Stato", "Termine collegato ID",
         ],
         [
             [
                 evento.id, evento.incarico_id, _label_incarico(incarichi_by_id[evento.incarico_id]),
                 evento.tipo, evento.data, evento.ora, evento.luogo,
-                evento.descrizione, stato_evento(evento),
+                evento.descrizione, stato_evento(evento), evento.termine_id,
             ]
             for evento in eventi
             if evento.incarico_id in incarichi_by_id
@@ -146,6 +150,74 @@ def genera_excel_export(session) -> bytes:
             ]
             for doc in documenti
             if doc.incarico_id in incarichi_by_id
+        ],
+    )
+
+    _append_sheet(
+        workbook,
+        "Pagamenti",
+        [
+            "ID", "Incarico ID", "Incarico", "Tipo", "Descrizione",
+            "Imponibile", "Spese liquidate", "Cassa 4%", "Marca da bollo",
+            "Importo dovuto da incassare", "Importo ricevuto",
+            "Data riferimento", "Data pagamento", "Pagatore", "Note",
+        ],
+        [
+            [
+                pagamento.id, pagamento.incarico_id,
+                _label_incarico(incarichi_by_id[pagamento.incarico_id]),
+                pagamento.tipo, pagamento.descrizione,
+                float(pagamento.imponibile or 0),
+                float(pagamento.spese or 0),
+                float(calcola_totale_fattura(pagamento.imponibile, pagamento.spese)["cassa"]),
+                float(calcola_totale_fattura(pagamento.imponibile, pagamento.spese)["bollo"]),
+                float(importo_dovuto_pagamento(pagamento)),
+                float(pagamento.importo_ricevuto or 0),
+                pagamento.data_riferimento, pagamento.data_pagamento,
+                pagamento.pagatore, pagamento.note,
+            ]
+            for pagamento in pagamenti
+            if pagamento.incarico_id in incarichi_by_id
+        ],
+    )
+
+    _append_sheet(
+        workbook,
+        "Registro modifiche",
+        [
+            "ID", "Incarico ID", "Incarico", "Data", "Azione",
+            "Richiesta", "Prima", "Dopo", "Note",
+        ],
+        [
+            [
+                modifica.id, modifica.incarico_id,
+                _label_incarico(incarichi_by_id[modifica.incarico_id])
+                if modifica.incarico_id in incarichi_by_id else "",
+                modifica.created_at, modifica.azione, modifica.richiesta,
+                modifica.prima, modifica.dopo, modifica.note,
+            ]
+            for modifica in modifiche_chat
+        ],
+    )
+
+    _append_sheet(
+        workbook,
+        "Storico termini",
+        [
+            "ID", "Incarico ID", "Incarico", "Termine ID", "Data modifica",
+            "Azione", "Motivo", "Tipo", "Giorni", "Decorrenza", "Data manuale",
+            "Scadenza", "Attivo", "Completato", "Prorogato", "Note",
+        ],
+        [
+            [
+                voce.id, voce.incarico_id,
+                _label_incarico(incarichi_by_id[voce.incarico_id])
+                if voce.incarico_id in incarichi_by_id else "",
+                voce.termine_id, voce.modificato_il, voce.azione, voce.motivo,
+                voce.tipo_termine, voce.giorni, voce.decorrenza, voce.data_manual,
+                voce.data_scadenza, voce.attivo, voce.completato, voce.prorogato, voce.note,
+            ]
+            for voce in storico_termini
         ],
     )
 

@@ -58,6 +58,72 @@ STATI_EVENTO = ["previsto", "completato", "annullato"]
 TIPI_EVENTO_NON_OPERATIVI_DASHBOARD = {"nota"}
 
 
+def normalizza_stato_incarico(stato: Optional[str]) -> str:
+    return (stato or "").strip().lower()
+
+
+def metric_key_dashboard(stato_incarico: Optional[str], alert_raw: str) -> str:
+    """Chiave usata dai contatori/filtri della dashboard."""
+    stato = normalizza_stato_incarico(stato_incarico)
+    if stato == "attesa osservazioni":
+        return "attesa_osservazioni"
+    if stato in {"sospeso", "chiuso"}:
+        return stato
+    return alert_raw
+
+
+def tipi_evento_gestiti_da_termini(incarico) -> set[str]:
+    """Tipi per cui un Termine attivo e' la fonte autorevole della scadenza."""
+    return {
+        str(getattr(termine, "tipo_termine", "") or "").strip().lower()
+        for termine in getattr(incarico, "termini", [])
+        if getattr(termine, "attivo", True)
+        and getattr(termine, "tipo_termine", None)
+        and calcola_scadenza_termine(incarico, termine) is not None
+    }
+
+
+def scadenza_osservazioni_dashboard(incarico) -> Optional[date]:
+    """Trova la scadenza osservazioni da termini calcolati o eventi registrati."""
+    termini_osservazioni = [
+        termine
+        for termine in getattr(incarico, "termini", [])
+        if str(getattr(termine, "tipo_termine", "") or "").strip().lower() == "osservazioni"
+        and getattr(termine, "attivo", True)
+    ]
+    if termini_osservazioni:
+        date_osservazioni = [
+            scadenza
+            for termine in termini_osservazioni
+            if (scadenza := calcola_scadenza_termine(incarico, termine)) is not None
+        ]
+        return min(date_osservazioni) if date_osservazioni else None
+
+    date_osservazioni = []
+    for evento in getattr(incarico, "eventi", []):
+        if str(getattr(evento, "tipo", "") or "").strip().lower() != "osservazioni":
+            continue
+        if getattr(evento, "data", None) is None:
+            continue
+        if getattr(evento, "annullato", False):
+            continue
+        date_osservazioni.append(evento.data)
+
+    if not date_osservazioni:
+        return None
+    return min(date_osservazioni)
+
+
+def attesa_osservazioni_da_mostrare_dashboard(incarico, data_oggi: Optional[date] = None) -> bool:
+    """True se l'incarico in attesa osservazioni deve tornare visibile."""
+    if normalizza_stato_incarico(getattr(incarico, "stato", None)) != "attesa osservazioni":
+        return True
+    if data_oggi is None:
+        data_oggi = date.today()
+    scadenza = scadenza_osservazioni_dashboard(incarico)
+    return scadenza is not None and scadenza < data_oggi
+
+
 def alert_badge_html(alert: str) -> str:
     color = ALERT_COLORS.get(alert, "#9e9e9e")
     label = ALERT_LABEL.get(alert, alert)
@@ -74,12 +140,15 @@ def fmt_date(d) -> str:
 
 def calcola_scadenza_termine(incarico, termine) -> Optional[date]:
     """Calcola la scadenza di un termine usando la logica esistente."""
-    from src.deadline_engine import calcola_data_scadenza, risolvi_data_decorrenza
+    from src.deadline_engine import applica_sospensioni, calcola_data_scadenza, risolvi_data_decorrenza
 
     base = risolvi_data_decorrenza(incarico, termine)
     if base is None:
         return None
-    return calcola_data_scadenza(base, int(termine.giorni or 0))
+    if getattr(termine, "decorrenza", None) == "data_manual":
+        return base
+    data_scadenza = calcola_data_scadenza(base, int(termine.giorni or 0))
+    return applica_sospensioni(incarico, base, data_scadenza)
 
 
 def classifica_per_dashboard(stato_incarico: str, prossima_scadenza) -> str:
@@ -90,14 +159,12 @@ def classifica_per_dashboard(stato_incarico: str, prossima_scadenza) -> str:
     l'incarico attivo non abbia alcuna scadenza valida: in quel caso
     restituisce 'dati_mancanti'.
     """
-    if stato_incarico == "chiuso":
+    stato = normalizza_stato_incarico(stato_incarico)
+    if stato == "chiuso":
         return "chiuso"
-    if stato_incarico == "sospeso":
+    if stato == "sospeso":
         return "sospeso"
-    if stato_incarico == "attesa osservazioni":
-        if prossima_scadenza is not None and getattr(prossima_scadenza, "tipo_termine", None) == "deposito":
-            from src.deadline_engine import classifica_alert
-            return classifica_alert(prossima_scadenza.giorni_residui, "attivo")
+    if stato == "attesa osservazioni":
         return "attesa_osservazioni"
     if prossima_scadenza is None:
         return "dati_mancanti"
@@ -106,7 +173,7 @@ def classifica_per_dashboard(stato_incarico: str, prossima_scadenza) -> str:
 
 
 def _usa_deposito_in_attesa_osservazioni(incarico, eventi):
-    if getattr(incarico, "stato", None) != "attesa osservazioni":
+    if normalizza_stato_incarico(getattr(incarico, "stato", None)) != "attesa osservazioni":
         return eventi
 
     depositi = [e for e in eventi if e.tipo_termine == "deposito"]
@@ -130,11 +197,14 @@ def trova_prossima_attivita_dashboard(incarico, data_oggi: Optional[date] = None
 
     eventi = [
         evento
-        for evento in genera_eventi_standard(incarico, incarico.termini)
+        for evento in genera_eventi_standard(incarico, incarico.termini, data_oggi=data_oggi)
         if getattr(evento, "tipo_termine", None) not in TIPI_EVENTO_NON_OPERATIVI_DASHBOARD
     ]
+    tipi_gestiti = tipi_evento_gestiti_da_termini(incarico)
     for evento in incarico.eventi:
         if getattr(evento, "tipo", None) in TIPI_EVENTO_NON_OPERATIVI_DASHBOARD:
+            continue
+        if str(getattr(evento, "tipo", "") or "").strip().lower() in tipi_gestiti:
             continue
         if evento.data is None:
             continue

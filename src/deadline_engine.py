@@ -14,11 +14,44 @@ class ScadenzaCalcolata:
     giorni_residui: int
     alert: str
     completato: bool
+    termine_id: Optional[int] = None
 
 
 def calcola_data_scadenza(base_date: date, giorni: int) -> date:
     """Restituisce base_date + giorni naturali."""
     return base_date + timedelta(days=giorni)
+
+
+def applica_sospensioni(incarico, base_date: date, data_scadenza: date) -> date:
+    """Sposta la scadenza per le sospensioni chiuse che incidono sul termine."""
+    intervalli = []
+    for sospensione in getattr(incarico, "sospensioni", []) or []:
+        if not getattr(sospensione, "incide_su_scadenze", False):
+            continue
+        data_inizio = getattr(sospensione, "data_inizio", None)
+        data_fine = getattr(sospensione, "data_fine", None)
+        if data_inizio is None or data_fine is None or data_fine < base_date:
+            continue
+        intervalli.append((max(data_inizio, base_date), data_fine))
+
+    if not intervalli:
+        return data_scadenza
+
+    intervalli.sort()
+    uniti = []
+    for data_inizio, data_fine in intervalli:
+        if uniti and data_inizio <= uniti[-1][1] + timedelta(days=1):
+            precedente_inizio, precedente_fine = uniti[-1]
+            uniti[-1] = (precedente_inizio, max(precedente_fine, data_fine))
+        else:
+            uniti.append((data_inizio, data_fine))
+
+    risultato = data_scadenza
+    for data_inizio, data_fine in uniti:
+        if data_inizio > risultato:
+            break
+        risultato += timedelta(days=(data_fine - data_inizio).days + 1)
+    return risultato
 
 
 def risolvi_data_decorrenza(incarico, termine) -> Optional[date]:
@@ -47,9 +80,13 @@ def _trova_termine_osservazioni(incarico) -> Optional[object]:
     return None
 
 
-def genera_eventi_standard(incarico, termini: list) -> list[ScadenzaCalcolata]:
+def genera_eventi_standard(
+    incarico,
+    termini: list,
+    data_oggi: Optional[date] = None,
+) -> list[ScadenzaCalcolata]:
     """Genera eventi calcolati per ogni termine attivo e non completato."""
-    oggi = date.today()
+    oggi = data_oggi or date.today()
     risultati = []
 
     for termine in termini:
@@ -60,7 +97,11 @@ def genera_eventi_standard(incarico, termini: list) -> list[ScadenzaCalcolata]:
         if base is None:
             continue
 
-        data_scad = calcola_data_scadenza(base, termine.giorni)
+        if termine.decorrenza == "data_manual":
+            data_scad = base
+        else:
+            data_scad = calcola_data_scadenza(base, termine.giorni)
+            data_scad = applica_sospensioni(incarico, base, data_scad)
         giorni_res = calcola_giorni_residui(data_scad, oggi)
         alert = classifica_alert(giorni_res, incarico.stato)
 
@@ -70,6 +111,7 @@ def genera_eventi_standard(incarico, termini: list) -> list[ScadenzaCalcolata]:
             giorni_residui=giorni_res,
             alert=alert,
             completato=termine.completato,
+            termine_id=getattr(termine, "id", None),
         ))
 
     return risultati

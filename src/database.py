@@ -7,6 +7,9 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 
 def _resolve_db_path() -> Path:
+    explicit_path = os.environ.get("SCADENZIARIO_DB_PATH")
+    if explicit_path:
+        return Path(explicit_path)
     if getattr(sys, "frozen", False):
         local_appdata = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
         return local_appdata / "ScadenziarioCTUPro" / "data" / "scadenziario.db"
@@ -102,6 +105,11 @@ def _migrate():
         "eventi": [
             ("completato", "BOOLEAN DEFAULT false"),
             ("annullato", "BOOLEAN DEFAULT false"),
+            ("termine_id", "INTEGER"),
+        ],
+        "pagamenti": [
+            ("imponibile", "NUMERIC(12, 2) DEFAULT 0"),
+            ("spese", "NUMERIC(12, 2) DEFAULT 0"),
         ],
     }
 
@@ -118,6 +126,59 @@ def _migrate():
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"))
 
     _ensure_eventi_data_nullable()
+    _ensure_termine_evento_schema()
+    _ensure_foreign_key_indexes()
+
+
+def _ensure_termine_evento_schema():
+    """Aggiunge indice e FK del collegamento Termine-Evento in modo idempotente."""
+    inspector = inspect(engine)
+    if "eventi" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_eventi_termine_id "
+            "ON eventi (termine_id)"
+        ))
+        if engine.name == "postgresql":
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'eventi_termine_id_fkey'
+                          AND conrelid = 'eventi'::regclass
+                    ) THEN
+                        ALTER TABLE eventi
+                        ADD CONSTRAINT eventi_termine_id_fkey
+                        FOREIGN KEY (termine_id) REFERENCES termini(id)
+                        ON DELETE SET NULL;
+                    END IF;
+                END $$;
+            """))
+
+
+def _ensure_foreign_key_indexes():
+    """Indicizza le chiavi esterne usate nelle relazioni e nelle cancellazioni."""
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    targets = (
+        ("termini", "incarico_id"),
+        ("eventi", "incarico_id"),
+        ("sospensioni", "incarico_id"),
+        ("documenti", "incarico_id"),
+        ("pagamenti", "incarico_id"),
+        ("modifiche_chat", "incarico_id"),
+    )
+    with engine.begin() as conn:
+        for table, column in targets:
+            if table not in existing_tables:
+                continue
+            conn.execute(text(
+                f"CREATE INDEX IF NOT EXISTS ix_{table}_{column} "
+                f"ON {table} ({column})"
+            ))
 
 
 def _ensure_eventi_data_nullable():
