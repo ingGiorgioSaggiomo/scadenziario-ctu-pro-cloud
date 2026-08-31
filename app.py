@@ -1635,8 +1635,9 @@ def _render_verifica_import_incarico(session, inc):
             st.caption("Nessun evento associato.")
 
 
-def page_verifica_import():
-    st.title("Verifica import Excel")
+def page_verifica_import(mostra_titolo: bool = True):
+    if mostra_titolo:
+        st.title("Verifica dati importati in origine")
     session = get_session()
     incs = (
         session.query(Incarico)
@@ -1848,10 +1849,11 @@ def page_consulta_incarico():
         session.close()
 
 
-def page_import_excel():
-    st.title("Import da Excel")
+def page_import_excel(mostra_titolo: bool = True):
+    if mostra_titolo:
+        st.title("Importazione storica da Excel")
     st.caption(
-        "Carica un file `.xlsx` con il layout dello scadenziario originario "
+        "Strumento di migrazione iniziale. Carica un file `.xlsx` con il layout dello scadenziario originario "
         "(A=descrizione, B=nomina, C=giuramento, D=inizio op., E=bozza, F=osservazioni, "
         "G=deposito, H=udienza, I=stato, K=note, L=sospensione, M=ripresa, N=gg sosp.). "
         "La colonna J (giorni alla scadenza) viene ignorata perché ricalcolata."
@@ -1912,6 +1914,55 @@ def page_import_excel():
                     st.write(f"- {msg}")
 
 
+def page_amministrazione_dati():
+    st.title("Amministrazione dati")
+    st.caption(
+        "Gli incarichi vengono normalmente creati e aggiornati direttamente nello scadenziario. "
+        "Gli strumenti Excel qui raccolti servono soltanto per migrazioni o verifiche eccezionali."
+    )
+
+    session = get_session()
+    try:
+        importati_inizialmente = (
+            session.query(Incarico)
+            .filter(Incarico.origine_dato == "import_excel")
+            .count()
+        )
+        numeri_provvisori = sum(
+            1
+            for (numero_rg,) in session.query(Incarico.numero_rg).all()
+            if is_numero_da_correggere(numero_rg)
+        )
+    finally:
+        session.close()
+
+    c1, c2 = st.columns(2)
+    c1.metric("Importati inizialmente", importati_inizialmente)
+    c2.metric("Numeri provvisori da verificare", numeri_provvisori)
+
+    sezione = st.segmented_control(
+        "Strumento amministrativo",
+        ["Panoramica", "Importazione storica", "Verifica dati storici"],
+        default="Panoramica",
+        key="amministrazione_dati_sezione",
+        label_visibility="collapsed",
+    )
+    if sezione == "Importazione storica":
+        st.warning(
+            "Usa questa funzione solo per acquisire un vecchio archivio Excel. "
+            "Non è necessaria per creare o aggiornare gli incarichi correnti."
+        )
+        page_import_excel(mostra_titolo=False)
+    elif sezione == "Verifica dati storici":
+        page_verifica_import(mostra_titolo=False)
+    else:
+        st.info(
+            "Per l'attività ordinaria usa Nuovo incarico e Modifica incarico. "
+            "L'indicazione 'importato inizialmente' conserva soltanto la provenienza storica "
+            "del primo caricamento e non descrive gli aggiornamenti successivi."
+        )
+
+
 def page_export_excel():
     st.title("Esporta Excel")
     session = get_session()
@@ -1952,9 +2003,8 @@ PAGES = {
     "Nuovo incarico": page_nuovo_incarico,
     "Eventi": page_eventi,
     "Sospensioni": page_sospensioni,
-    "Import Excel": page_import_excel,
     "Esporta Excel": page_export_excel,
-    "Verifica import": page_verifica_import,
+    "Amministrazione dati": page_amministrazione_dati,
 }
 
 if OFFLINE_MODE:
@@ -1968,6 +2018,8 @@ if OFFLINE_MODE:
 requested_page = st.query_params.get("page", "Dashboard")
 if requested_page == "Gestione termini":
     requested_page = "Modifica incarico"
+if requested_page in {"Import Excel", "Verifica import"}:
+    requested_page = "Amministrazione dati"
 if requested_page not in PAGES:
     requested_page = "Dashboard"
 

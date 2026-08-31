@@ -67,7 +67,7 @@ def genera_excel_export(session) -> bytes:
             "Parti", "Oggetto", "Data nomina", "Data giuramento",
             "Data inizio operazioni", "Data invio bozza",
             "Data ricezione osservazioni", "Stato", "Priorita",
-            "Origine", "Note",
+            "Origine iniziale", "Note",
         ],
         [
             [

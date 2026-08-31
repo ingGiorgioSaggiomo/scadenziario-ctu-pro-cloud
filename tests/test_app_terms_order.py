@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from app import _termini_in_ordine_cronologico
+from app import PAGES, _termini_in_ordine_cronologico
 
 
 @dataclass
@@ -40,3 +40,9 @@ def test_termini_in_ordine_cronologico():
     ordinati = _termini_in_ordine_cronologico(inc)
 
     assert [t.id for t in ordinati] == [22, 20, 16, 18]
+
+
+def test_import_excel_raccolto_in_amministrazione_dati():
+    assert "Amministrazione dati" in PAGES
+    assert "Import Excel" not in PAGES
+    assert "Verifica import" not in PAGES

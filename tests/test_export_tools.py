@@ -81,6 +81,9 @@ def test_export_excel_contiene_fogli_e_dati():
         "Storico termini",
     ]
     assert workbook["Incarichi"]["C2"].value == "57/2024"
+    incarichi_headers = [cell.value for cell in workbook["Incarichi"][1]]
+    assert "Origine iniziale" in incarichi_headers
+    assert "Origine" not in incarichi_headers
     assert workbook["Eventi"]["I2"].value == "completato"
     assert workbook["Pagamenti"]["D2"].value == "acconto"
     assert workbook["Pagamenti"]["F2"].value == 1000
