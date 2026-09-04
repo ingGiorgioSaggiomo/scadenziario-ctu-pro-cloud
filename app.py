@@ -28,6 +28,7 @@ from src.termine_eventi import (
     aggiorna_termine,
     completa_bozza,
     completa_osservazioni,
+    normalizza_impostazione_scadenza,
     ricalcola_termini_incarico,
     registra_storico_termine,
     rileva_incongruenze_incarico,
@@ -416,7 +417,10 @@ def _render_termini_editor(session, inc, prefix: str):
                         DECORRENZE,
                         index=DECORRENZE.index(term.decorrenza) if term.decorrenza in DECORRENZE else 0,
                     )
-                    data_manual_mod = st.date_input("Data manuale", value=term.data_manual)
+                    data_manual_mod = st.date_input(
+                        "Data di scadenza esatta (se compilata prevale sul calcolo)",
+                        value=term.data_manual,
+                    )
                     workflow_richiesto = term.tipo_termine in {"bozza", "osservazioni"} and not term.completato
                     completato_mod = st.checkbox(
                         "Completato",
@@ -430,23 +434,24 @@ def _render_termini_editor(session, inc, prefix: str):
                 salva = c3.form_submit_button("Salva modifiche", type="primary")
                 elimina = c4.form_submit_button("Elimina termine", type="secondary")
                 if salva:
-                    if decorrenza_mod == "data_manual" and data_manual_mod is None:
-                        st.error("Inserisci la data manuale.")
+                    try:
+                        aggiorna_termine(
+                            session,
+                            inc,
+                            term,
+                            tipo_termine=tipo_mod,
+                            giorni=int(giorni_mod),
+                            decorrenza=decorrenza_mod,
+                            data_manual=data_manual_mod,
+                            attivo=attivo_mod,
+                            completato=completato_mod,
+                            prorogato=prorogato_mod,
+                            note=note_mod,
+                            motivo=motivo_mod,
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
                         st.stop()
-                    aggiorna_termine(
-                        session,
-                        inc,
-                        term,
-                        tipo_termine=tipo_mod,
-                        giorni=int(giorni_mod),
-                        decorrenza=decorrenza_mod,
-                        data_manual=data_manual_mod,
-                        attivo=attivo_mod,
-                        completato=completato_mod,
-                        prorogato=prorogato_mod,
-                        note=note_mod,
-                        motivo=motivo_mod,
-                    )
                     session.commit()
                     st.success("Termine, Evento collegato e cronologia aggiornati.")
                     st.rerun()
@@ -490,21 +495,32 @@ def _render_termini_editor(session, inc, prefix: str):
                 key=f"{prefix}_giorni_{inc.id}",
             )
         with c2:
-            decorrenza = st.selectbox("Decorrenza", DECORRENZE, key=f"{prefix}_decorr_{inc.id}")
+            decorrenza = st.selectbox(
+                "Decorrenza",
+                DECORRENZE,
+                index=DECORRENZE.index("data_manual"),
+                key=f"{prefix}_decorr_v2_{inc.id}",
+            )
             data_manual = st.date_input(
-                "Data manuale (solo se decorrenza = data_manual)",
+                "Data di scadenza esatta (se compilata prevale sul calcolo)",
                 value=None,
-                key=f"{prefix}_data_manual_{inc.id}",
+                key=f"{prefix}_data_manual_v2_{inc.id}",
             )
         attivo = st.checkbox("Attivo", value=True, key=f"{prefix}_attivo_{inc.id}")
         if st.form_submit_button("Aggiungi termine", type="primary"):
-            giorni_effettivi = 0 if decorrenza == "data_manual" else int(giorni)
+            try:
+                decorrenza_effettiva, giorni_effettivi, data_manual_effettiva = (
+                    normalizza_impostazione_scadenza(decorrenza, int(giorni), data_manual)
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+                st.stop()
             t = Termine(
                 incarico_id=inc.id,
                 tipo_termine=tipo_t,
                 giorni=giorni_effettivi,
-                decorrenza=decorrenza,
-                data_manual=data_manual if decorrenza == "data_manual" else None,
+                decorrenza=decorrenza_effettiva,
+                data_manual=data_manual_effettiva,
                 tipo_computo="naturali",
                 attivo=attivo,
             )

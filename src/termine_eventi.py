@@ -26,6 +26,19 @@ def _tipo_normalizzato(valore) -> str:
     return str(valore or "").strip().lower()
 
 
+def normalizza_impostazione_scadenza(
+    decorrenza: str,
+    giorni: int,
+    data_manual: Optional[date],
+) -> tuple[str, int, Optional[date]]:
+    """Una data esatta inserita dall'utente prevale sul calcolo automatico."""
+    if data_manual is not None:
+        return "data_manual", 0, data_manual
+    if decorrenza == "data_manual":
+        raise ValueError("Inserisci la data di scadenza esatta.")
+    return decorrenza, int(giorni or 0), None
+
+
 def registra_storico_termine(session, termine: Termine, azione: str, motivo: Optional[str] = None):
     """Salva una fotografia del termine prima o dopo una variazione."""
     storico = StoricoTermine(
@@ -98,11 +111,16 @@ def aggiorna_termine(
     note: Optional[str],
     motivo: Optional[str] = None,
 ) -> Termine:
+    decorrenza, giorni, data_manual = normalizza_impostazione_scadenza(
+        decorrenza,
+        giorni,
+        data_manual,
+    )
     registra_storico_termine(session, termine, "prima_modifica", motivo)
     termine.tipo_termine = tipo_termine
     termine.decorrenza = decorrenza
-    termine.giorni = 0 if decorrenza == "data_manual" else int(giorni or 0)
-    termine.data_manual = data_manual if decorrenza == "data_manual" else None
+    termine.giorni = giorni
+    termine.data_manual = data_manual
     termine.attivo = bool(attivo)
     termine.completato = bool(completato)
     termine.prorogato = bool(prorogato)

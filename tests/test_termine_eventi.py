@@ -99,6 +99,42 @@ def test_modifica_termine_aggiorna_evento_e_registra_storico():
     assert storico[1].data_scadenza == date(2026, 9, 14)
 
 
+def test_data_esatta_inserita_prevale_sulla_decorrenza_automatica():
+    session = _session()
+    inc = _incarico(session)
+    termine = Termine(
+        incarico_id=inc.id,
+        tipo_termine="osservazioni",
+        giorni=30,
+        decorrenza="data_nomina",
+        data_scadenza=date(2026, 1, 31),
+        attivo=True,
+    )
+    session.add(termine)
+    session.flush()
+
+    aggiorna_termine(
+        session,
+        inc,
+        termine,
+        tipo_termine="osservazioni",
+        giorni=30,
+        decorrenza="data_nomina",
+        data_manual=date(2026, 11, 30),
+        attivo=True,
+        completato=False,
+        prorogato=False,
+        note=None,
+    )
+    session.flush()
+
+    assert termine.decorrenza == "data_manual"
+    assert termine.giorni == 0
+    assert termine.data_manual == date(2026, 11, 30)
+    assert termine.data_scadenza == date(2026, 11, 30)
+    assert termine.evento_collegato.data == date(2026, 11, 30)
+
+
 def test_workflow_bozza_e_osservazioni_aggiorna_stato_e_date():
     session = _session()
     inc = _incarico(session)
